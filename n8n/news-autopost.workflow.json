@@ -1,0 +1,133 @@
+{
+  "name": "News portal auto post (RSS → API)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## কীভাবে চালাবেন\n1. **RSS Feed Read** এ যে সাইট/ফিড থেকে খবর আনবেন তার RSS লিংক বসান।\n2. **Publish to Portal** এ URL বদলে আপনার সাইটের ঠিকানা দিন: https://আপনার-সাইট.vercel.app/api/v1/posts\n3. ওই node এ Credential বানান: Header Auth → Name = x-api-key, Value = আপনার API_KEY\n4. আগে Execute workflow চেপে পরীক্ষা করুন, তারপর Active করুন।\n\nsource_url (মূল লিংক) পাঠানো হয় বলে একই খবর দুইবার প্রকাশ হবে না।\nডিফল্টে খবর সরাসরি প্রকাশ হয়। আগে দেখে নিতে চাইলে Vercel এ API_DEFAULT_STATUS=draft দিন।\nমূল সাইটের লেখা অনুমতি ছাড়া কপি করবেন না — নিজের বা অনুমোদিত সূত্র ব্যবহার করুন।",
+        "height": 330,
+        "width": 520
+      },
+      "id": "a1",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "a2",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://example.com/feed.xml",
+        "options": {}
+      },
+      "id": "a3",
+      "name": "RSS Feed Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// RSS থেকে পাওয়া প্রতিটি খবরকে পোর্টালের API এর ফরম্যাটে সাজানো হচ্ছে\nconst j = $input.item.json;\nconst html = j['content:encoded'] || j.content || j.contentSnippet || j.summary || '';\n\n// ছবি: আগে enclosure, না থাকলে লেখার প্রথম <img>\nlet image = (j.enclosure && j.enclosure.url) || '';\nif (!image) {\n  const m = /<img[^>]+src=[\"']([^\"']+)[\"']/i.exec(html);\n  if (m) image = m[1];\n}\n\nreturn {\n  json: {\n    title: String(j.title || '').trim(),\n    content: html || String(j.title || ''),\n    link: j.link || '',\n    image,\n    category: 'news',            // এখানে আপনার ক্যাটেগরির slug দিন (যেমন: sports, economy)\n    tags: Array.isArray(j.categories) ? j.categories : [],\n  },\n};"
+      },
+      "id": "a4",
+      "name": "Map fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-SITE.vercel.app/api/v1/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  title: $json.title,\n  content: $json.content,\n  category: $json.category,\n  image_url: $json.image || undefined,\n  source_url: $json.link || undefined,\n  tags: $json.tags,\n  author: 'অটো রিপোর্টার'\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a5",
+      "name": "Publish to Portal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "RSS Feed Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Feed Read": {
+      "main": [
+        [
+          {
+            "node": "Map fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map fields": {
+      "main": [
+        [
+          {
+            "node": "Publish to Portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
